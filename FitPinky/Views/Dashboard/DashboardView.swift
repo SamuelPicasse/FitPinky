@@ -3,7 +3,9 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(MockDataService.self) private var dataService
     @Binding var showSweatCam: Bool
-    @State private var fullScreenPhoto: UIImage?
+    @State private var selectedPhotoEntries: [PhotoEntry] = []
+    @State private var selectedPhotoIndex: Int = 0
+    @State private var showPhotoViewer = false
     @State private var ringProgress: CGFloat = 0
 
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }
@@ -36,13 +38,11 @@ struct DashboardView: View {
                     .padding(.bottom, 8)
             }
         }
-        .overlay {
-            if let photo = fullScreenPhoto {
-                fullScreenPhotoOverlay(photo)
-            }
-        }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { ringProgress = 1 }
+        }
+        .fullScreenCover(isPresented: $showPhotoViewer) {
+            PhotoFullScreenView(photos: selectedPhotoEntries, currentIndex: selectedPhotoIndex)
         }
     }
 
@@ -167,7 +167,21 @@ struct DashboardView: View {
                     .frame(height: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
-                    .onTapGesture { fullScreenPhoto = uiImage }
+                    .onTapGesture {
+                        let currentWeek = currentWeek
+                        let allWorkouts = dataService.getWorkouts(for: currentWeek)
+                            .sorted { $0.loggedAt < $1.loggedAt }
+                        let entries: [PhotoEntry] = allWorkouts.compactMap { w in
+                            guard w.photoData != nil else { return nil }
+                            let memberName = w.userId == dataService.currentUser.id
+                                ? dataService.currentUser.displayName
+                                : dataService.partner.displayName
+                            return PhotoEntry(workout: w, memberName: memberName)
+                        }
+                        selectedPhotoEntries = entries
+                        selectedPhotoIndex = entries.firstIndex { $0.id == workout.id } ?? 0
+                        showPhotoViewer = true
+                    }
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(Color.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [6]))
@@ -268,18 +282,4 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Full Screen Photo
-
-    private func fullScreenPhotoOverlay(_ image: UIImage) -> some View {
-        ZStack {
-            Color.black.opacity(0.9).ignoresSafeArea()
-                .onTapGesture { fullScreenPhoto = nil }
-
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(20)
-        }
-    }
 }
