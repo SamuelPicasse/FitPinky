@@ -9,6 +9,7 @@ protocol DataServiceProtocol {
     func logWorkout(photoData: Data, caption: String?) async throws
     func updateWager(text: String) async throws
     func getStreak() -> Int
+    func getBestStreak() -> Int
     func getPastWeeks() -> [WeeklyGoal]
     func updateDisplayName(_ name: String) async throws
     func updateWeeklyGoal(_ days: Int) async throws
