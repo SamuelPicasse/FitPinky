@@ -49,15 +49,17 @@ struct WeekDetailView: View {
     private var progressRingsCard: some View {
         VStack(spacing: 16) {
             HStack(spacing: 24) {
-                progressRing(
+                ProgressRingView(
                     name: dataService.currentUser.displayName,
                     current: userADays,
-                    goal: week.goalUserA
+                    goal: week.goalUserA,
+                    ringProgress: ringProgress
                 )
-                progressRing(
+                ProgressRingView(
                     name: dataService.partner.displayName,
                     current: userBDays,
-                    goal: week.goalUserB
+                    goal: week.goalUserB,
+                    ringProgress: ringProgress
                 )
             }
         }
@@ -65,41 +67,6 @@ struct WeekDetailView: View {
         .frame(maxWidth: .infinity)
         .background(Color.cardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cardBorder, lineWidth: 1))
-    }
-
-    private func progressRing(name: String, current: Int, goal: Int) -> some View {
-        let fraction = goal > 0 ? min(CGFloat(current) / CGFloat(goal), 1.0) : 0
-
-        return VStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .stroke(Color.cardBorder, lineWidth: 10)
-
-                Circle()
-                    .trim(from: 0, to: fraction * ringProgress)
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(colors: [.brand, .brandPurple, .brand]),
-                            center: .center,
-                            startAngle: .degrees(-90),
-                            endAngle: .degrees(270)
-                        ),
-                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.8), value: ringProgress)
-
-                Text("\(current)/\(goal)")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-            }
-            .frame(width: 110, height: 110)
-
-            Text(name)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Color.textSecondary)
-        }
     }
 
     // MARK: - Day-by-Day
@@ -116,9 +83,9 @@ struct WeekDetailView: View {
             ForEach(0..<7, id: \.self) { dayOffset in
                 let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: week.weekStart)!
                 let dayName = date.formatted(.dateTime.weekday(.wide))
-                let sammyWorkouts = workoutsForDay(date: date, userId: dataService.currentUser.id)
-                let jottaWorkouts = workoutsForDay(date: date, userId: dataService.partner.id)
-                let hasWorkouts = !sammyWorkouts.isEmpty || !jottaWorkouts.isEmpty
+                let currentUserWorkouts = workoutsForDay(date: date, userId: dataService.currentUser.id)
+                let partnerWorkouts = workoutsForDay(date: date, userId: dataService.partner.id)
+                let hasWorkouts = !currentUserWorkouts.isEmpty || !partnerWorkouts.isEmpty
 
                 VStack(spacing: 0) {
                     if dayOffset > 0 {
@@ -132,16 +99,16 @@ struct WeekDetailView: View {
                             .foregroundStyle(hasWorkouts ? .white : Color.textSecondary)
                             .frame(width: 90, alignment: .leading)
 
-                        // Sammy's photo or empty
+                        // Current user's photo or empty
                         dayThumbnail(
-                            workouts: sammyWorkouts,
+                            workouts: currentUserWorkouts,
                             name: dataService.currentUser.displayName,
                             allEntries: allEntries
                         )
 
-                        // Jotta's photo or empty
+                        // Partner's photo or empty
                         dayThumbnail(
-                            workouts: jottaWorkouts,
+                            workouts: partnerWorkouts,
                             name: dataService.partner.displayName,
                             allEntries: allEntries
                         )
@@ -192,7 +159,7 @@ struct WeekDetailView: View {
             if let result = week.result {
                 Text(resultTitle(result))
                     .font(.headline)
-                    .foregroundStyle(resultColor(result))
+                    .foregroundStyle(result.color)
             }
             if !week.wagerText.isEmpty {
                 Text(week.wagerText)
@@ -233,11 +200,4 @@ struct WeekDetailView: View {
         }
     }
 
-    private func resultColor(_ result: WeekResult) -> Color {
-        switch result {
-        case .bothHit: Color.success
-        case .bothMissed: .red
-        case .aOwes, .bOwes: .orange
-        }
-    }
 }

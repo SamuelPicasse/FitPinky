@@ -78,15 +78,17 @@ struct DashboardView: View {
     private var progressRingsCard: some View {
         VStack(spacing: 16) {
             HStack(spacing: 24) {
-                progressRing(
+                ProgressRingView(
                     name: dataService.currentUser.displayName,
                     current: userDays,
-                    goal: currentWeek.goalUserA
+                    goal: currentWeek.goalUserA,
+                    ringProgress: ringProgress
                 )
-                progressRing(
+                ProgressRingView(
                     name: dataService.partner.displayName,
                     current: partnerDays,
-                    goal: currentWeek.goalUserB
+                    goal: currentWeek.goalUserB,
+                    ringProgress: ringProgress
                 )
             }
 
@@ -106,41 +108,6 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
         .background(Color.cardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cardBorder, lineWidth: 1))
-    }
-
-    private func progressRing(name: String, current: Int, goal: Int) -> some View {
-        let fraction = goal > 0 ? min(CGFloat(current) / CGFloat(goal), 1.0) : 0
-
-        return VStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .stroke(Color.cardBorder, lineWidth: 10)
-
-                Circle()
-                    .trim(from: 0, to: fraction * ringProgress)
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(colors: [.brand, .brandPurple, .brand]),
-                            center: .center,
-                            startAngle: .degrees(-90),
-                            endAngle: .degrees(270)
-                        ),
-                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.8), value: ringProgress)
-
-                Text("\(current)/\(goal)")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-            }
-            .frame(width: 110, height: 110)
-
-            Text(name)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Color.textSecondary)
-        }
     }
 
     // MARK: - FitCam Strip

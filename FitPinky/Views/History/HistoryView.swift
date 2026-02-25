@@ -108,7 +108,7 @@ struct HistoryView: View {
             if let result = week.result {
                 Text(wagerOutcome(result: result, wagerText: week.wagerText))
                     .font(.subheadline)
-                    .foregroundStyle(wagerColor(result))
+                    .foregroundStyle(result.color)
             }
 
             // Photo thumbnails
@@ -180,11 +180,4 @@ struct HistoryView: View {
         }
     }
 
-    private func wagerColor(_ result: WeekResult) -> Color {
-        switch result {
-        case .bothHit: Color.success
-        case .bothMissed: .red
-        case .aOwes, .bOwes: .orange
-        }
-    }
 }

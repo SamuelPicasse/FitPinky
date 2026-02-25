@@ -1,10 +1,19 @@
 import Foundation
+import SwiftUI
 
 enum WeekResult: String, Codable {
     case bothHit = "both_hit"
     case aOwes = "a_owes"
     case bOwes = "b_owes"
     case bothMissed = "both_missed"
+
+    var color: Color {
+        switch self {
+        case .bothHit: Color.success
+        case .bothMissed: .red
+        case .aOwes, .bOwes: .orange
+        }
+    }
 }
 
 struct WeeklyGoal: Identifiable, Codable {
