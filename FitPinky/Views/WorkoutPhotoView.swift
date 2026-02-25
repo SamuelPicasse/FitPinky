@@ -29,6 +29,8 @@ struct WorkoutPhotoView: View {
             }
         }
         .task(id: workout.id) {
+            image = nil
+            loaded = false
             if let photoData = workout.photoData {
                 image = UIImage(data: photoData)
             } else {

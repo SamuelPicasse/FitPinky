@@ -34,7 +34,7 @@ final class CloudKitService: DataServiceProtocol {
     private var memberCount: Int = 0
     private var photoCache: [UUID: Data] = [:]
 
-    private var isEnsuringWeekGoal = false
+    private let ensureWeekGoalLock = OSAllocatedUnfairLock(initialState: false)
     private var initialSyncComplete = false
 
     private static let changeTokenKeyPrefix = "FitPinky_serverChangeToken_"
@@ -388,9 +388,13 @@ final class CloudKitService: DataServiceProtocol {
     // MARK: - Weekly Goal Auto-Creation
 
     func ensureCurrentWeekGoal() async {
-        guard !isEnsuringWeekGoal, hasGroup, let zoneID = groupZoneID else { return }
-        isEnsuringWeekGoal = true
-        defer { isEnsuringWeekGoal = false }
+        let didAcquire = ensureWeekGoalLock.withLock { locked -> Bool in
+            guard !locked else { return false }
+            locked = true
+            return true
+        }
+        guard didAcquire, hasGroup, let zoneID = groupZoneID else { return }
+        defer { ensureWeekGoalLock.withLock { $0 = false } }
 
         let currentWeekStart = Date.now.startOfWeek(weekStartDay: pair.weekStartDay)
 
@@ -492,7 +496,9 @@ final class CloudKitService: DataServiceProtocol {
             }
             addDebug("evaluatePreviousWeek() \(goal.weekStart.calendarDate): A=\(daysA)/\(goal.goalUserA) B=\(daysB)/\(goal.goalUserB) → \(result.rawValue)")
 
-            postWeekResultNotification(result: result, wagerText: goal.wagerText)
+            if initialSyncComplete {
+                postWeekResultNotification(result: result, wagerText: goal.wagerText)
+            }
 
             let database = activeGroupDatabase
             let recordName = goal.id.uuidString
@@ -603,7 +609,7 @@ final class CloudKitService: DataServiceProtocol {
                 weeklyGoal: weeklyGoal
             )
             partner = UserProfile(
-                id: myMemberID,
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
                 pairId: groupID,
                 displayName: "Waiting for partner",
                 weeklyGoal: weeklyGoal
@@ -1379,8 +1385,12 @@ final class CloudKitService: DataServiceProtocol {
                 addDebug("deltaSync: updated WeeklyGoal")
 
             case "Workout":
-                let workout = workoutFromRecord(record)
+                var workout = workoutFromRecord(record)
                 if let index = workouts.firstIndex(where: { $0.id == workout.id }) {
+                    // Preserve in-memory photoData from local capture
+                    if workout.photoData == nil {
+                        workout.photoData = workouts[index].photoData
+                    }
                     workouts[index] = workout
                 } else {
                     workouts.append(workout)
@@ -1412,7 +1422,7 @@ final class CloudKitService: DataServiceProtocol {
         for (recordID, recordType) in deletions {
             switch recordType {
             case "Workout":
-                workouts.removeAll { $0.photoRecordName == recordID.recordName }
+                workouts.removeAll { $0.photoRecordName == recordID.recordName || $0.id.uuidString == recordID.recordName }
             case "WeeklyGoal":
                 weeklyGoals.removeAll { $0.id.uuidString == recordID.recordName }
             case "Nudge":

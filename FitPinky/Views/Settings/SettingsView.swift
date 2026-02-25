@@ -206,7 +206,7 @@ struct SettingsView: View {
                 titleVisibility: .visible
             ) {
                 Button("Leave Group", role: .destructive) {
-                    // No-op in mock
+                    // TODO: Implement leaveGroup() in CloudKitService and DataServiceProtocol
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

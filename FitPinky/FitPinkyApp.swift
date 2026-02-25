@@ -31,6 +31,15 @@ struct FitPinkyApp: App {
                     }
                     #endif
                 }
+                .onChange(of: dataService.hasGroup) { _, newValue in
+                    guard newValue else { return }
+                    Task {
+                        #if !targetEnvironment(simulator)
+                        await requestNotificationPermission()
+                        await dataService.setupSubscriptions()
+                        #endif
+                    }
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
                         Task {

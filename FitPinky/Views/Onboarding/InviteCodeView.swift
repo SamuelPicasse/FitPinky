@@ -8,6 +8,7 @@ struct InviteCodeView: View {
 
     @State private var pulse = false
     @State private var isPolling = false
+    @State private var showCancelConfirmation = false
 
     private var shareMessage: String {
         "Join my FitPinky group with code: \(inviteCode)"
@@ -72,6 +73,27 @@ struct InviteCodeView: View {
         }
         .navigationTitle("Invite Code")
         .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    showCancelConfirmation = true
+                }
+                .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .confirmationDialog(
+            "Cancel invite?",
+            isPresented: $showCancelConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel Invite", role: .destructive) {
+                // Clear pending invite code and go back
+                UserDefaults.standard.removeObject(forKey: "FitPinky_pendingInviteCode")
+            }
+            Button("Keep Waiting", role: .cancel) {}
+        } message: {
+            Text("Your invite code will be discarded. You can create a new group later.")
+        }
         .task(id: inviteCode) {
             pulse = true
             await pollForPartner()

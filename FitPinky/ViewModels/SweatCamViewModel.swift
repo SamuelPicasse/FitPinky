@@ -84,11 +84,11 @@ final class SweatCamViewModel {
             let mid = (lo + hi) / 2.0
             guard let data = heicData(for: image, quality: mid) else { return nil }
             let sizeKB = data.count / 1024
-            best = data
             if sizeKB > targetSizeKB {
                 hi = mid
             } else {
                 lo = mid
+                best = data
             }
         }
         return best
