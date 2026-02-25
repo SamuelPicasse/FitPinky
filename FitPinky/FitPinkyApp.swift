@@ -1,17 +1,13 @@
-//
-//  FitPinkyApp.swift
-//  FitPinky
-//
-//  Created by Samuel van der Poel on 25/02/2026.
-//
-
 import SwiftUI
 
 @main
 struct FitPinkyApp: App {
+    @State private var dataService = MockDataService()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(dataService)
         }
     }
 }

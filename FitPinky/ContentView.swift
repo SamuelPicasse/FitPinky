@@ -1,24 +1,41 @@
-//
-//  ContentView.swift
-//  FitPinky
-//
-//  Created by Samuel van der Poel on 25/02/2026.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @State private var selectedTab = 0
+    @State private var showSweatCam = false
 
-#Preview {
-    ContentView()
+    var body: some View {
+        ZStack {
+            Color.surfaceBackground.ignoresSafeArea()
+
+            TabView(selection: $selectedTab) {
+                DashboardView()
+                    .tabItem { Label("Home", systemImage: "house.fill") }
+                    .tag(0)
+
+                Color.clear
+                    .tabItem { Label("FitCam", systemImage: "camera.fill") }
+                    .tag(1)
+
+                HistoryView()
+                    .tabItem { Label("History", systemImage: "calendar") }
+                    .tag(2)
+
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(3)
+            }
+            .tint(Color.brand)
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            if newValue == 1 {
+                showSweatCam = true
+                selectedTab = oldValue
+            }
+        }
+        .fullScreenCover(isPresented: $showSweatCam) {
+            SweatCamView()
+        }
+        .preferredColorScheme(.dark)
+    }
 }

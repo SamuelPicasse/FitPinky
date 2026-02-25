@@ -71,6 +71,7 @@ final class MockDataService: DataServiceProtocol {
                 userId: userAId,
                 pairId: pairId,
                 weeklyGoalId: currentWeek.id,
+                photoData: MockDataService.makeSamplePhoto(color: .systemIndigo),
                 caption: "Leg day 🦵",
                 loggedAt: twoDaysAgo,
                 workoutDate: twoDaysAgo
@@ -79,6 +80,7 @@ final class MockDataService: DataServiceProtocol {
                 userId: userBId,
                 pairId: pairId,
                 weeklyGoalId: currentWeek.id,
+                photoData: MockDataService.makeSamplePhoto(color: .systemTeal),
                 caption: "Morning run",
                 loggedAt: twoDaysAgo,
                 workoutDate: twoDaysAgo
@@ -87,6 +89,7 @@ final class MockDataService: DataServiceProtocol {
                 userId: userAId,
                 pairId: pairId,
                 weeklyGoalId: currentWeek.id,
+                photoData: MockDataService.makeSamplePhoto(color: .systemPurple),
                 caption: "Push day",
                 loggedAt: yesterday,
                 workoutDate: yesterday
@@ -188,5 +191,14 @@ final class MockDataService: DataServiceProtocol {
         }
         let uniqueDays = Set(weekWorkouts.map { $0.workoutDate.calendarDate })
         return uniqueDays.count
+    }
+
+    private static func makeSamplePhoto(color: UIColor, size: CGSize = CGSize(width: 200, height: 200)) -> Data? {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            color.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+        return image.jpegData(compressionQuality: 0.5)
     }
 }
