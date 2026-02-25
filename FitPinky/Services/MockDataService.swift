@@ -279,6 +279,18 @@ final class MockDataService: DataServiceProtocol {
 
     func ensureCurrentWeekGoal() async {}
 
+    func sendNudge(message: String) async throws {
+        let nudge = Nudge(
+            senderId: currentUser.id,
+            pairId: pair.id,
+            message: message
+        )
+        nudges.append(nudge)
+    }
+
+    func performDeltaSync() async {}
+    func setupSubscriptions() async {}
+
     /// Count unique workout days for a user in a given week
     func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int {
         let weekWorkouts = workouts.filter {

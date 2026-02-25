@@ -3,6 +3,7 @@ import CloudKit
 import Observation
 import os
 import CryptoKit
+import UserNotifications
 
 @Observable
 final class CloudKitService: DataServiceProtocol {
@@ -34,6 +35,10 @@ final class CloudKitService: DataServiceProtocol {
     private var photoCache: [UUID: Data] = [:]
 
     private var isEnsuringWeekGoal = false
+    private var initialSyncComplete = false
+
+    private static let changeTokenKeyPrefix = "FitPinky_serverChangeToken_"
+    private static let subscriptionSetupKey = "FitPinky_subscriptionsCreated_v1"
 
     private enum GroupZoneLocation {
         case privateDB
@@ -201,6 +206,8 @@ final class CloudKitService: DataServiceProtocol {
         do {
             try await database.save(record)
             try? FileManager.default.removeItem(at: tempURL)
+            // Delta sync in background to pick up server-side changes
+            Task { [weak self] in await self?.performDeltaSync() }
         } catch {
             workouts.removeAll { $0.id == workout.id }
             try? FileManager.default.removeItem(at: tempURL)
@@ -480,6 +487,8 @@ final class CloudKitService: DataServiceProtocol {
             weeklyGoals[index].result = result
             addDebug("evaluatePreviousWeek() \(goal.weekStart.calendarDate): A=\(daysA)/\(goal.goalUserA) B=\(daysB)/\(goal.goalUserB) → \(result.rawValue)")
 
+            postWeekResultNotification(result: result, wagerText: goal.wagerText)
+
             let database = activeGroupDatabase
             let recordName = goal.id.uuidString
             Task {
@@ -537,7 +546,7 @@ final class CloudKitService: DataServiceProtocol {
             memberRecord["userRecordName"] = userRecordName as CKRecordValue
         }
 
-        let share = CKShare(rootRecord: groupRecord)
+        let share = CKShare(recordZoneID: zoneID)
         share.publicPermission = .readWrite
         share[CKShare.SystemFieldKey.title] = "FitPinky Group" as CKRecordValue
 
@@ -645,11 +654,8 @@ final class CloudKitService: DataServiceProtocol {
             try await acceptShare(metadata)
             addDebug("joinGroup() accepted CKShare")
 
-            guard let rootRecordID = metadata.hierarchicalRootRecordID else {
-                throw CloudKitServiceError.shareAcceptFailed
-            }
-            let preferredZoneName = rootRecordID.zoneID.zoneName
-            try await discoverGroupZone(preferShared: true, preferredZoneName: preferredZoneName)
+            let shareZoneName = metadata.share.recordID.zoneID.zoneName
+            try await discoverGroupZone(preferShared: true, preferredZoneName: shareZoneName)
 
             guard let zoneID = groupZoneID else {
                 throw CloudKitServiceError.shareAcceptFailed
@@ -658,7 +664,8 @@ final class CloudKitService: DataServiceProtocol {
             addDebug("joinGroup() discovered shared zone: \(zoneID.zoneName)")
 
             let database = activeGroupDatabase
-            let groupRecordID = CKRecord.ID(recordName: rootRecordID.recordName, zoneID: zoneID)
+            let groupRecordName = String(zoneID.zoneName.dropFirst("FitPinkyGroup_".count))
+            let groupRecordID = CKRecord.ID(recordName: groupRecordName, zoneID: zoneID)
             let groupRecord = try await database.record(for: groupRecordID)
 
             let userRecordName = try? await container.userRecordID().recordName
@@ -1210,6 +1217,311 @@ final class CloudKitService: DataServiceProtocol {
             loggedAt: record["loggedAt"] as? Date ?? .now,
             workoutDate: record["workoutDate"] as? Date ?? .now
         )
+    }
+
+    private func nudgeFromRecord(_ record: CKRecord) -> Nudge {
+        Nudge(
+            id: UUID(uuidString: record["nudgeId"] as? String ?? record.recordID.recordName) ?? UUID(),
+            senderId: UUID(uuidString: (record["senderRef"] as? CKRecord.Reference)?.recordID.recordName ?? "") ?? UUID(),
+            pairId: UUID(uuidString: (record["groupRef"] as? CKRecord.Reference)?.recordID.recordName ?? "") ?? pair.id,
+            message: record["message"] as? String ?? "",
+            sentAt: record["sentAt"] as? Date ?? .now
+        )
+    }
+
+    // MARK: - Delta Sync
+
+    private var serverChangeToken: CKServerChangeToken? {
+        get {
+            guard let zoneID = groupZoneID,
+                  let data = UserDefaults.standard.data(forKey: Self.changeTokenKeyPrefix + zoneID.zoneName) else { return nil }
+            return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+        }
+        set {
+            guard let zoneID = groupZoneID else { return }
+            if let token = newValue,
+               let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) {
+                UserDefaults.standard.set(data, forKey: Self.changeTokenKeyPrefix + zoneID.zoneName)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.changeTokenKeyPrefix + zoneID.zoneName)
+            }
+        }
+    }
+
+    func performDeltaSync() async {
+        guard let zoneID = groupZoneID else { return }
+        let database = activeGroupDatabase
+
+        addDebug("performDeltaSync() starting")
+
+        do {
+            var moreComing = true
+            while moreComing {
+                moreComing = try await fetchZoneChanges(zoneID: zoneID, database: database)
+            }
+            initialSyncComplete = true
+            await ensureCurrentWeekGoal()
+            addDebug("performDeltaSync() completed")
+        } catch let ckError as CKError where ckError.code == .changeTokenExpired {
+            addDebug("performDeltaSync() token expired, doing full fetch")
+            serverChangeToken = nil
+            do {
+                try await fetchAllRecords()
+                initialSyncComplete = true
+            } catch {
+                addDebug("performDeltaSync() full re-fetch failed: \(debugDescription(for: error))")
+            }
+        } catch {
+            addDebug("performDeltaSync() failed: \(debugDescription(for: error))")
+            handleError(error)
+        }
+    }
+
+    private func fetchZoneChanges(zoneID: CKRecordZone.ID, database: CKDatabase) async throws -> Bool {
+        let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration(
+            previousServerChangeToken: serverChangeToken
+        )
+
+        let operation = CKFetchRecordZoneChangesOperation(
+            recordZoneIDs: [zoneID],
+            configurationsByRecordZoneID: [zoneID: config]
+        )
+        operation.qualityOfService = .userInitiated
+
+        var changedRecords: [CKRecord] = []
+        var deletedRecordIDs: [(CKRecord.ID, CKRecord.RecordType)] = []
+        var hasMoreComing = false
+
+        return try await withCheckedThrowingContinuation { continuation in
+            operation.recordWasChangedBlock = { _, result in
+                if case .success(let record) = result {
+                    changedRecords.append(record)
+                }
+            }
+
+            operation.recordWithIDWasDeletedBlock = { recordID, recordType in
+                deletedRecordIDs.append((recordID, recordType))
+            }
+
+            operation.recordZoneFetchResultBlock = { [weak self] _, result in
+                switch result {
+                case .success(let (token, _, moreComing)):
+                    self?.serverChangeToken = token
+                    hasMoreComing = moreComing
+                case .failure:
+                    break
+                }
+            }
+
+            operation.fetchRecordZoneChangesResultBlock = { [weak self] result in
+                switch result {
+                case .success:
+                    self?.processChangedRecords(changedRecords)
+                    self?.processDeletedRecords(deletedRecordIDs)
+                    continuation.resume(returning: hasMoreComing)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+
+            database.add(operation)
+        }
+    }
+
+    private func processChangedRecords(_ records: [CKRecord]) {
+        for record in records {
+            switch record.recordType {
+            case "Group":
+                pair = pairFromRecord(record)
+                addDebug("deltaSync: updated Group")
+
+            case "Member":
+                let profile = userProfileFromRecord(record)
+                if profile.id == currentUser.id {
+                    currentUser = profile
+                } else {
+                    partner = profile
+                    if memberCount < 2 {
+                        memberCount = 2
+                        hasGroup = true
+                    }
+                }
+                addDebug("deltaSync: updated Member \(profile.displayName)")
+
+            case "WeeklyGoal":
+                let goal = weeklyGoalFromRecord(record)
+                if let index = weeklyGoals.firstIndex(where: { $0.id == goal.id }) {
+                    weeklyGoals[index] = goal
+                } else {
+                    weeklyGoals.append(goal)
+                }
+                addDebug("deltaSync: updated WeeklyGoal")
+
+            case "Workout":
+                let workout = workoutFromRecord(record)
+                if let index = workouts.firstIndex(where: { $0.id == workout.id }) {
+                    workouts[index] = workout
+                } else {
+                    workouts.append(workout)
+                    if workout.userId != currentUser.id && initialSyncComplete {
+                        postPartnerWorkoutNotification(partnerName: partner.displayName)
+                    }
+                }
+                addDebug("deltaSync: updated Workout")
+
+            case "Nudge":
+                let nudge = nudgeFromRecord(record)
+                if !nudges.contains(where: { $0.id == nudge.id }) {
+                    nudges.append(nudge)
+                    if nudge.senderId != currentUser.id && initialSyncComplete {
+                        let senderName = nudge.senderId == partner.id ? partner.displayName : "Partner"
+                        postNudgeNotification(senderName: senderName, message: nudge.message)
+                    }
+                }
+                addDebug("deltaSync: processed Nudge")
+
+            default:
+                break
+            }
+        }
+    }
+
+    private func processDeletedRecords(_ deletions: [(CKRecord.ID, CKRecord.RecordType)]) {
+        for (recordID, recordType) in deletions {
+            switch recordType {
+            case "Workout":
+                workouts.removeAll { $0.photoRecordName == recordID.recordName }
+            case "WeeklyGoal":
+                weeklyGoals.removeAll { $0.id.uuidString == recordID.recordName }
+            case "Nudge":
+                nudges.removeAll { $0.id.uuidString == recordID.recordName }
+            default:
+                break
+            }
+        }
+    }
+
+    // MARK: - Nudge
+
+    func sendNudge(message: String) async throws {
+        guard let zoneID = groupZoneID else { return }
+        let database = activeGroupDatabase
+
+        let nudge = Nudge(
+            senderId: currentUser.id,
+            pairId: pair.id,
+            message: message
+        )
+
+        let record = CKRecord(recordType: "Nudge", recordID: CKRecord.ID(zoneID: zoneID))
+        record["nudgeId"] = nudge.id.uuidString as CKRecordValue
+        record["senderRef"] = CKRecord.Reference(
+            recordID: CKRecord.ID(recordName: currentUser.id.uuidString, zoneID: zoneID),
+            action: .none
+        )
+        record["groupRef"] = CKRecord.Reference(
+            recordID: CKRecord.ID(recordName: pair.id.uuidString, zoneID: zoneID),
+            action: .none
+        )
+        record["message"] = message as CKRecordValue
+        record["sentAt"] = Date.now as CKRecordValue
+
+        do {
+            try await database.save(record)
+            nudges.append(nudge)
+            addDebug("sendNudge() saved: \(message)")
+        } catch {
+            handleError(error)
+            throw mapCKError(error)
+        }
+    }
+
+    // MARK: - Push Notification Subscriptions
+
+    func setupSubscriptions() async {
+        guard groupZoneID != nil else { return }
+
+        let key = Self.subscriptionSetupKey + "_" + (groupZoneID?.zoneName ?? "")
+        guard !UserDefaults.standard.bool(forKey: key) else {
+            addDebug("setupSubscriptions() already created")
+            return
+        }
+
+        let database = activeGroupDatabase
+        let subscriptionID = "fitpinky-zone-changes-\(groupZoneLocation == .privateDB ? "private" : "shared")"
+
+        let subscription = CKDatabaseSubscription(subscriptionID: subscriptionID)
+        let notificationInfo = CKSubscription.NotificationInfo()
+        notificationInfo.shouldSendContentAvailable = true
+        subscription.notificationInfo = notificationInfo
+
+        do {
+            try await database.save(subscription)
+            UserDefaults.standard.set(true, forKey: key)
+            addDebug("setupSubscriptions() created CKDatabaseSubscription")
+        } catch let error as CKError where error.code == .serverRejectedRequest {
+            UserDefaults.standard.set(true, forKey: key)
+            addDebug("setupSubscriptions() subscription likely already exists")
+        } catch {
+            addDebug("setupSubscriptions() failed: \(debugDescription(for: error))")
+        }
+    }
+
+    // MARK: - Local Notifications
+
+    private func postPartnerWorkoutNotification(partnerName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "FitPinky"
+        content.body = "\(partnerName) just showed up! \u{1F4AA}"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "workout-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func postNudgeNotification(senderName: String, message: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "FitPinky"
+        content.body = "\(senderName) says: \(message)"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "nudge-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func postWeekResultNotification(result: WeekResult, wagerText: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "FitPinky"
+
+        switch result {
+        case .bothHit:
+            content.body = "Week's over! You both hit your goals \u{1F389}"
+        case .aOwes:
+            let name = currentUser.id == pair.userAId ? currentUser.displayName : partner.displayName
+            content.body = wagerText.isEmpty ? "\(name) missed their goal this week" : "\(name) owes: \(wagerText)"
+        case .bOwes:
+            let name = currentUser.id == pair.userBId ? currentUser.displayName : partner.displayName
+            content.body = wagerText.isEmpty ? "\(name) missed their goal this week" : "\(name) owes: \(wagerText)"
+        case .bothMissed:
+            content.body = "You both missed your goals this week \u{1F605}"
+        }
+
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "week-result-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - Diagnostics

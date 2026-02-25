@@ -20,6 +20,9 @@ protocol DataServiceProtocol {
     func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int
     func loadPhoto(for workout: Workout) async -> Data?
     func ensureCurrentWeekGoal() async
+    func sendNudge(message: String) async throws
+    func performDeltaSync() async
+    func setupSubscriptions() async
 }
 
 #if targetEnvironment(simulator)
