@@ -17,3 +17,14 @@ extension Color {
     // Semantic
     static let success = Color(red: 52/255, green: 211/255, blue: 153/255)            // #34D399
 }
+
+// MARK: - Design Constants
+
+extension CGFloat {
+    /// Cards, sections, and containers
+    static let cardCornerRadius: CGFloat = 16
+    /// Primary action buttons and CTA elements
+    static let buttonCornerRadius: CGFloat = 14
+    /// Text fields, inputs, and small interactive elements
+    static let inputCornerRadius: CGFloat = 12
+}

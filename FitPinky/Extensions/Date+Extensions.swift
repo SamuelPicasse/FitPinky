@@ -32,7 +32,10 @@ extension Date {
     func daysRemainingInWeek(weekStartDay: Int = 1) -> Int {
         let calendar = Calendar.current
         let weekStart = startOfWeek(weekStartDay: weekStartDay)
-        let daysSinceStart = calendar.dateComponents([.day], from: weekStart, to: calendarDate).day ?? 0
+        // Use noon-to-noon comparison to avoid DST off-by-one on spring-forward days
+        let noonStart = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: weekStart)!
+        let noonToday = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: calendarDate)!
+        let daysSinceStart = calendar.dateComponents([.day], from: noonStart, to: noonToday).day ?? 0
         return max(1, 7 - daysSinceStart)
     }
 

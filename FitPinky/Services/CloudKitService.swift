@@ -32,7 +32,7 @@ final class CloudKitService: DataServiceProtocol {
     private let container = CKContainer(identifier: "iCloud.com.sammyvanderpoel.FitPinky")
     private var groupZoneID: CKRecordZone.ID?
     private var memberCount: Int = 0
-    private var photoCache: [UUID: Data] = [:]
+    private let photoCache = NSCache<NSUUID, NSData>()
 
     private let ensureWeekGoalLock = OSAllocatedUnfairLock(initialState: false)
     private var initialSyncComplete = false
@@ -366,7 +366,9 @@ final class CloudKitService: DataServiceProtocol {
 
     func loadPhoto(for workout: Workout) async -> Data? {
         if let data = workout.photoData { return data }
-        if let cached = photoCache[workout.id] { return cached }
+        if let cached = photoCache.object(forKey: workout.id as NSUUID) {
+            return cached as Data
+        }
 
         guard let recordName = workout.photoRecordName, let zoneID = groupZoneID else { return nil }
         let database = activeGroupDatabase
@@ -376,7 +378,7 @@ final class CloudKitService: DataServiceProtocol {
             let record = try await database.record(for: recordID)
             if let asset = record["photo"] as? CKAsset, let fileURL = asset.fileURL {
                 let data = try Data(contentsOf: fileURL)
-                photoCache[workout.id] = data
+                photoCache.setObject(data as NSData, forKey: workout.id as NSUUID)
                 return data
             }
         } catch {

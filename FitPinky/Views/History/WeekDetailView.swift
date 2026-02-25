@@ -81,7 +81,11 @@ struct WeekDetailView: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, 12)
 
-            let allEntries = weekPhotoEntries()
+            let allEntries = weekWorkouts.photoEntries(
+                currentUserId: dataService.currentUser.id,
+                currentUserName: dataService.currentUser.displayName,
+                partnerName: dataService.partner.displayName
+            )
 
             ForEach(0..<7, id: \.self) { dayOffset in
                 let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: week.weekStart)!
@@ -177,16 +181,6 @@ struct WeekDetailView: View {
     private func workoutsForDay(date: Date, userId: UUID) -> [Workout] {
         weekWorkouts.filter {
             $0.userId == userId && $0.workoutDate.calendarDate == date.calendarDate
-        }
-    }
-
-    private func weekPhotoEntries() -> [PhotoEntry] {
-        weekWorkouts.compactMap { workout in
-            guard workout.hasPhoto else { return nil }
-            let name = workout.userId == dataService.currentUser.id
-                ? dataService.currentUser.displayName
-                : dataService.partner.displayName
-            return PhotoEntry(workout: workout, memberName: name)
         }
     }
 

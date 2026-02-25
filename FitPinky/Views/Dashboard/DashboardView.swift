@@ -141,13 +141,11 @@ struct DashboardView: View {
                         let currentWeek = currentWeek
                         let allWorkouts = dataService.getWorkouts(for: currentWeek)
                             .sorted { $0.loggedAt < $1.loggedAt }
-                        let entries: [PhotoEntry] = allWorkouts.compactMap { w in
-                            guard w.hasPhoto else { return nil }
-                            let memberName = w.userId == dataService.currentUser.id
-                                ? dataService.currentUser.displayName
-                                : dataService.partner.displayName
-                            return PhotoEntry(workout: w, memberName: memberName)
-                        }
+                        let entries = allWorkouts.photoEntries(
+                            currentUserId: dataService.currentUser.id,
+                            currentUserName: dataService.currentUser.displayName,
+                            partnerName: dataService.partner.displayName
+                        )
                         selectedPhotoEntries = entries
                         selectedPhotoIndex = entries.firstIndex { $0.id == workout.id } ?? 0
                         showPhotoViewer = true

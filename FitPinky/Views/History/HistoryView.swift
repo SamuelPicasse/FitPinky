@@ -118,7 +118,11 @@ struct HistoryView: View {
             if !weekWorkouts.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        let entries = photoEntries(for: weekWorkouts)
+                        let entries = weekWorkouts.photoEntries(
+                            currentUserId: dataService.currentUser.id,
+                            currentUserName: dataService.currentUser.displayName,
+                            partnerName: dataService.partner.displayName
+                        )
                         ForEach(Array(entries.prefix(4).enumerated()), id: \.element.id) { index, entry in
                             WorkoutPhotoView(workout: entry.workout)
                                 .frame(width: 56, height: 56)
@@ -157,16 +161,6 @@ struct HistoryView: View {
     }
 
     // MARK: - Helpers
-
-    private func photoEntries(for workouts: [Workout]) -> [PhotoEntry] {
-        workouts.compactMap { workout in
-            guard workout.hasPhoto else { return nil }
-            let name = workout.userId == dataService.currentUser.id
-                ? dataService.currentUser.displayName
-                : dataService.partner.displayName
-            return PhotoEntry(workout: workout, memberName: name)
-        }
-    }
 
     private func wagerOutcome(result: WeekResult, wagerText: String) -> String {
         let isCurrentUserA = dataService.currentUser.id == dataService.pair.userAId

@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var displayNameField: String = ""
     @FocusState private var displayNameFocused: Bool
     @State private var wagerDebounceTask: Task<Void, Never>?
+    @State private var localWagerText: String = ""
 
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }
 
@@ -25,7 +26,10 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear { displayNameField = dataService.currentUser.displayName }
+            .onAppear {
+                displayNameField = dataService.currentUser.displayName
+                localWagerText = currentWeek.wagerText
+            }
         }
     }
 
@@ -116,15 +120,25 @@ struct SettingsView: View {
                     Text("This week's wager")
                         .foregroundStyle(.white)
                 }
-                TextField("e.g. Loser buys sushi", text: wagerBinding)
+                TextField("e.g. Loser buys sushi", text: $localWagerText)
                     .foregroundStyle(.white)
                     .textFieldStyle(.plain)
                     .padding(10)
                     .background(Color.surfaceBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .onChange(of: localWagerText) { _, newValue in
+                        let trimmed = String(newValue.prefix(200))
+                        if trimmed != newValue { localWagerText = trimmed }
+                        wagerDebounceTask?.cancel()
+                        wagerDebounceTask = Task {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            guard !Task.isCancelled else { return }
+                            try? await dataService.updateWager(text: trimmed)
+                        }
+                    }
 
                 HStack {
                     Spacer()
-                    Text("\(currentWeek.wagerText.count)/200")
+                    Text("\(localWagerText.count)/200")
                         .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
                 }
@@ -134,24 +148,6 @@ struct SettingsView: View {
             Text("Wager")
                 .foregroundStyle(Color.textSecondary)
         }
-    }
-
-    private var wagerBinding: Binding<String> {
-        Binding(
-            get: { currentWeek.wagerText },
-            set: { newValue in
-                let trimmed = String(newValue.prefix(200))
-                if let index = dataService.weeklyGoals.firstIndex(where: { $0.result == nil }) {
-                    dataService.weeklyGoals[index].wagerText = trimmed
-                }
-                wagerDebounceTask?.cancel()
-                wagerDebounceTask = Task {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    guard !Task.isCancelled else { return }
-                    try? await dataService.updateWager(text: trimmed)
-                }
-            }
-        )
     }
 
     // MARK: - Group

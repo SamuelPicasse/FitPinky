@@ -16,6 +16,16 @@ struct PhotoEntry: Identifiable {
     }
 }
 
+extension Array where Element == Workout {
+    func photoEntries(currentUserId: UUID, currentUserName: String, partnerName: String) -> [PhotoEntry] {
+        compactMap { workout in
+            guard workout.hasPhoto else { return nil }
+            let name = workout.userId == currentUserId ? currentUserName : partnerName
+            return PhotoEntry(workout: workout, memberName: name)
+        }
+    }
+}
+
 struct PhotoFullScreenView: View {
     let photos: [PhotoEntry]
     @State var currentIndex: Int
@@ -58,7 +68,8 @@ struct PhotoFullScreenView: View {
         .gesture(
             DragGesture(minimumDistance: 50)
                 .onChanged { value in
-                    if value.translation.height > 0 {
+                    let isVertical = abs(value.translation.height) > abs(value.translation.width)
+                    if isVertical && value.translation.height > 0 {
                         dragOffset = value.translation.height
                     }
                 }
