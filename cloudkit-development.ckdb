@@ -1,0 +1,137 @@
+DEFINE SCHEMA
+
+    RECORD TYPE Group (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        inviteCode      STRING QUERYABLE SEARCHABLE SORTABLE,
+        maxMembers      INT64 QUERYABLE SORTABLE,
+        userAId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        userBId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        weekStartDay    INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE InviteCode (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        acceptedAt      TIMESTAMP QUERYABLE SORTABLE,
+        code            STRING QUERYABLE SEARCHABLE SORTABLE,
+        creatorName     STRING QUERYABLE SEARCHABLE SORTABLE,
+        expiresAt       TIMESTAMP QUERYABLE SORTABLE,
+        shareURL        STRING QUERYABLE SEARCHABLE SORTABLE,
+        status          STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Member (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        displayName     STRING QUERYABLE SEARCHABLE SORTABLE,
+        groupRef        REFERENCE QUERYABLE,
+        joinedAt        TIMESTAMP QUERYABLE SORTABLE,
+        role            STRING QUERYABLE SEARCHABLE SORTABLE,
+        timezone        STRING QUERYABLE SEARCHABLE SORTABLE,
+        userRecordName  STRING QUERYABLE SEARCHABLE SORTABLE,
+        weeklyGoal      INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Nudge (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        groupRef        REFERENCE QUERYABLE,
+        message         STRING QUERYABLE SEARCHABLE SORTABLE,
+        senderRef       REFERENCE QUERYABLE,
+        sentAt          TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        roles           LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WeeklyGoal (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        goalUserA       INT64 QUERYABLE SORTABLE,
+        goalUserB       INT64 QUERYABLE SORTABLE,
+        groupRef        REFERENCE QUERYABLE,
+        result          STRING QUERYABLE SEARCHABLE SORTABLE,
+        wagerText       STRING QUERYABLE SEARCHABLE SORTABLE,
+        weekStart       TIMESTAMP QUERYABLE SORTABLE,
+        weeklyGoalId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Workout (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE SORTABLE,
+        caption         STRING QUERYABLE SEARCHABLE SORTABLE,
+        groupRef        REFERENCE QUERYABLE,
+        loggedAt        TIMESTAMP QUERYABLE SORTABLE,
+        memberRef       REFERENCE QUERYABLE,
+        photo           ASSET,
+        weeklyGoalRef   REFERENCE QUERYABLE,
+        workoutDate     TIMESTAMP QUERYABLE SORTABLE,
+        workoutId       STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE "cloudkit.share" (
+        "___createTime"               TIMESTAMP,
+        "___createdBy"                REFERENCE,
+        "___etag"                     STRING,
+        "___modTime"                  TIMESTAMP,
+        "___modifiedBy"               REFERENCE,
+        "___recordID"                 REFERENCE,
+        "cloudkit.thumbnailImageData" BYTES,
+        "cloudkit.title"              STRING,
+        "cloudkit.type"               STRING,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
