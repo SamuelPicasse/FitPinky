@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @Environment(MockDataService.self) private var dataService
-    @State private var showSweatCam = false
+    @Binding var showSweatCam: Bool
     @State private var fullScreenPhoto: UIImage?
     @State private var ringProgress: CGFloat = 0
 
@@ -35,9 +35,6 @@ struct DashboardView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
-        }
-        .fullScreenCover(isPresented: $showSweatCam) {
-            SweatCamView()
         }
         .overlay {
             if let photo = fullScreenPhoto {

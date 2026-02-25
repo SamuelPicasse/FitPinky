@@ -9,7 +9,7 @@ struct ContentView: View {
             Color.surfaceBackground.ignoresSafeArea()
 
             TabView(selection: $selectedTab) {
-                DashboardView()
+                DashboardView(showSweatCam: $showSweatCam)
                     .tabItem { Label("Home", systemImage: "house.fill") }
                     .tag(0)
 

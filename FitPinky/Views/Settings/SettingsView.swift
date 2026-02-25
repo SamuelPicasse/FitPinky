@@ -83,6 +83,9 @@ struct SettingsView: View {
                     Text("Sunday").tag(7)
                 }
                 .tint(Color.brand)
+                .onChange(of: dataService.pair.weekStartDay) { _, newValue in
+                    Task { try? await dataService.updateWeekStartDay(newValue) }
+                }
             }
             .listRowBackground(Color.cardBackground)
         } header: {

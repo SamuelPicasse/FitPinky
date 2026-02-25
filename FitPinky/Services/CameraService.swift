@@ -11,7 +11,7 @@ final class CameraService: NSObject {
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.fitpinky.camera.session")
-    private var currentPosition: AVCaptureDevice.Position = .back
+    private var currentPosition: AVCaptureDevice.Position = .front
     private var photoContinuation: CheckedContinuation<UIImage, Error>?
 
     // MARK: - Authorization

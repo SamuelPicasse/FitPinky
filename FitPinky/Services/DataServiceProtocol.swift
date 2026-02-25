@@ -15,4 +15,5 @@ protocol DataServiceProtocol {
     func updateWeekStartDay(_ day: Int) async throws
     func latestWorkout(for userId: UUID) -> Workout?
     func hasLoggedToday() -> Bool
+    func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int
 }
