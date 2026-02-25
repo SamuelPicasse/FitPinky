@@ -72,10 +72,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
-        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
-    ) async -> UIBackgroundFetchResult {
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
         NotificationCenter.default.post(name: .cloudKitRemoteNotification, object: nil, userInfo: userInfo)
-        return .newData
+        completionHandler(.newData)
     }
 }
 

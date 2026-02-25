@@ -7,6 +7,7 @@ struct DashboardView: View {
     @State private var selectedPhotoIndex: Int = 0
     @State private var showPhotoViewer = false
     @State private var ringProgress: CGFloat = 0
+    @State private var showNudgeSent = false
 
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }
     private var userDays: Int { dataService.workoutDays(for: dataService.currentUser.id, in: currentWeek) }
@@ -25,6 +26,7 @@ struct DashboardView: View {
                         topBar
                         progressRingsCard
                         fitCamStrip
+                        nudgeButton
                         wagerCard
                     }
                     .padding(.horizontal, 16)
@@ -182,6 +184,39 @@ struct DashboardView: View {
         .padding(10)
         .background(Color.cardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cardBorder, lineWidth: 1))
+    }
+
+    // MARK: - Nudge Button
+
+    private var nudgeButton: some View {
+        Button {
+            guard !showNudgeSent else { return }
+            Task {
+                try? await dataService.sendNudge(message: "gym time? \u{1F60F}")
+                showNudgeSent = true
+                try? await Task.sleep(for: .seconds(2))
+                showNudgeSent = false
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.point.right.fill")
+                    .font(.subheadline)
+                Text(showNudgeSent ? "Nudge sent! \u{1F60F}" : "Nudge \(dataService.partner.displayName)")
+                    .font(.subheadline.weight(.medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                showNudgeSent ? Color.success.opacity(0.2) : Color.cardBackground,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .foregroundStyle(showNudgeSent ? Color.success : Color.brand)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(showNudgeSent ? Color.success.opacity(0.3) : Color.cardBorder, lineWidth: 1)
+            )
+        }
+        .disabled(showNudgeSent)
     }
 
     // MARK: - Wager Card

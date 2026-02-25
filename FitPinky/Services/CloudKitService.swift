@@ -464,13 +464,16 @@ final class CloudKitService: DataServiceProtocol {
     }
 
     private func evaluatePreviousWeekIfNeeded(currentWeekStart: Date) async {
-        let unevaluated = weeklyGoals.enumerated().filter { (_, goal) in
+        // Only the zone owner writes results to avoid race conditions between devices
+        guard groupZoneLocation == .privateDB else { return }
+
+        let unevaluated = weeklyGoals.filter { goal in
             goal.result == nil && goal.weekStart.calendarDate < currentWeekStart.calendarDate
         }
 
         guard !unevaluated.isEmpty, let zoneID = groupZoneID else { return }
 
-        for (index, goal) in unevaluated {
+        for goal in unevaluated {
             let daysA = workoutDays(for: pair.userAId, in: goal)
             let daysB = workoutDays(for: pair.userBId, in: goal)
             let hitA = daysA >= goal.goalUserA
@@ -484,7 +487,9 @@ final class CloudKitService: DataServiceProtocol {
             case (false, false): result = .bothMissed
             }
 
-            weeklyGoals[index].result = result
+            if let safeIndex = weeklyGoals.firstIndex(where: { $0.id == goal.id }) {
+                weeklyGoals[safeIndex].result = result
+            }
             addDebug("evaluatePreviousWeek() \(goal.weekStart.calendarDate): A=\(daysA)/\(goal.goalUserA) B=\(daysB)/\(goal.goalUserB) → \(result.rawValue)")
 
             postWeekResultNotification(result: result, wagerText: goal.wagerText)
@@ -1225,7 +1230,8 @@ final class CloudKitService: DataServiceProtocol {
             senderId: UUID(uuidString: (record["senderRef"] as? CKRecord.Reference)?.recordID.recordName ?? "") ?? UUID(),
             pairId: UUID(uuidString: (record["groupRef"] as? CKRecord.Reference)?.recordID.recordName ?? "") ?? pair.id,
             message: record["message"] as? String ?? "",
-            sentAt: record["sentAt"] as? Date ?? .now
+            sentAt: record["sentAt"] as? Date ?? .now,
+            ckRecordName: record.recordID.recordName
         )
     }
 
@@ -1291,6 +1297,7 @@ final class CloudKitService: DataServiceProtocol {
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [(CKRecord.ID, CKRecord.RecordType)] = []
         var hasMoreComing = false
+        var zoneError: Error?
 
         return try await withCheckedThrowingContinuation { continuation in
             operation.recordWasChangedBlock = { _, result in
@@ -1303,22 +1310,35 @@ final class CloudKitService: DataServiceProtocol {
                 deletedRecordIDs.append((recordID, recordType))
             }
 
-            operation.recordZoneFetchResultBlock = { [weak self] _, result in
+            operation.recordZoneFetchResultBlock = { _, result in
                 switch result {
                 case .success(let (token, _, moreComing)):
-                    self?.serverChangeToken = token
                     hasMoreComing = moreComing
-                case .failure:
-                    break
+                    // Token stored temporarily; will be persisted on MainActor below
+                    let tokenData = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
+                    if let tokenData {
+                        UserDefaults.standard.set(tokenData, forKey: Self.changeTokenKeyPrefix + zoneID.zoneName)
+                    }
+                case .failure(let error):
+                    zoneError = error
                 }
             }
 
             operation.fetchRecordZoneChangesResultBlock = { [weak self] result in
                 switch result {
                 case .success:
-                    self?.processChangedRecords(changedRecords)
-                    self?.processDeletedRecords(deletedRecordIDs)
-                    continuation.resume(returning: hasMoreComing)
+                    if let zoneError {
+                        continuation.resume(throwing: zoneError)
+                        return
+                    }
+                    let changed = changedRecords
+                    let deleted = deletedRecordIDs
+                    let more = hasMoreComing
+                    Task { @MainActor [weak self] in
+                        self?.processChangedRecords(changed)
+                        self?.processDeletedRecords(deleted)
+                        continuation.resume(returning: more)
+                    }
                 case .failure(let error):
                     continuation.resume(throwing: error)
                 }
@@ -1328,6 +1348,7 @@ final class CloudKitService: DataServiceProtocol {
         }
     }
 
+    @MainActor
     private func processChangedRecords(_ records: [CKRecord]) {
         for record in records {
             switch record.recordType {
@@ -1386,6 +1407,7 @@ final class CloudKitService: DataServiceProtocol {
         }
     }
 
+    @MainActor
     private func processDeletedRecords(_ deletions: [(CKRecord.ID, CKRecord.RecordType)]) {
         for (recordID, recordType) in deletions {
             switch recordType {
@@ -1394,7 +1416,7 @@ final class CloudKitService: DataServiceProtocol {
             case "WeeklyGoal":
                 weeklyGoals.removeAll { $0.id.uuidString == recordID.recordName }
             case "Nudge":
-                nudges.removeAll { $0.id.uuidString == recordID.recordName }
+                nudges.removeAll { $0.ckRecordName == recordID.recordName }
             default:
                 break
             }
@@ -1439,9 +1461,9 @@ final class CloudKitService: DataServiceProtocol {
     // MARK: - Push Notification Subscriptions
 
     func setupSubscriptions() async {
-        guard groupZoneID != nil else { return }
+        guard let zoneID = groupZoneID else { return }
 
-        let key = Self.subscriptionSetupKey + "_" + (groupZoneID?.zoneName ?? "")
+        let key = Self.subscriptionSetupKey + "_" + zoneID.zoneName
         guard !UserDefaults.standard.bool(forKey: key) else {
             addDebug("setupSubscriptions() already created")
             return
@@ -1450,19 +1472,31 @@ final class CloudKitService: DataServiceProtocol {
         let database = activeGroupDatabase
         let subscriptionID = "fitpinky-zone-changes-\(groupZoneLocation == .privateDB ? "private" : "shared")"
 
-        let subscription = CKDatabaseSubscription(subscriptionID: subscriptionID)
         let notificationInfo = CKSubscription.NotificationInfo()
         notificationInfo.shouldSendContentAvailable = true
-        subscription.notificationInfo = notificationInfo
+
+        let subscription: CKSubscription
+        if groupZoneLocation == .sharedDB {
+            // Shared DB doesn't support CKDatabaseSubscription; use zone subscription
+            let zoneSub = CKRecordZoneSubscription(zoneID: zoneID, subscriptionID: subscriptionID)
+            zoneSub.notificationInfo = notificationInfo
+            subscription = zoneSub
+        } else {
+            let dbSub = CKDatabaseSubscription(subscriptionID: subscriptionID)
+            dbSub.notificationInfo = notificationInfo
+            subscription = dbSub
+        }
 
         do {
             try await database.save(subscription)
             UserDefaults.standard.set(true, forKey: key)
-            addDebug("setupSubscriptions() created CKDatabaseSubscription")
+            addDebug("setupSubscriptions() created subscription (\(groupZoneLocation == .sharedDB ? "zone" : "database"))")
         } catch let error as CKError where error.code == .serverRejectedRequest {
+            // Subscription already exists — mark as done
             UserDefaults.standard.set(true, forKey: key)
             addDebug("setupSubscriptions() subscription likely already exists")
         } catch {
+            // Don't mark as done so it retries next launch
             addDebug("setupSubscriptions() failed: \(debugDescription(for: error))")
         }
     }
@@ -1530,8 +1564,8 @@ final class CloudKitService: DataServiceProtocol {
         let timestamp = Self.debugTimestampFormatter.string(from: Date())
         let line = "[\(timestamp)] \(message)"
         logger.debug("\(line, privacy: .public)")
-        Task { @MainActor in
-            self.appendDebugLine(line)
+        Task { @MainActor [weak self] in
+            self?.appendDebugLine(line)
         }
     }
 
