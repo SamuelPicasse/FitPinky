@@ -3,6 +3,7 @@ import UIKit
 
 struct InviteCodeView: View {
     @Environment(ActiveDataService.self) private var dataService
+    @Environment(\.dismiss) private var dismiss
 
     let inviteCode: String
 
@@ -87,8 +88,8 @@ struct InviteCodeView: View {
             titleVisibility: .visible
         ) {
             Button("Cancel Invite", role: .destructive) {
-                // Clear pending invite code and go back
-                UserDefaults.standard.removeObject(forKey: "FitPinky_pendingInviteCode")
+                UserDefaults.standard.removeObject(forKey: CloudKitService.pendingInviteCodeKey)
+                dismiss()
             }
             Button("Keep Waiting", role: .cancel) {}
         } message: {
