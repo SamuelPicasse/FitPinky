@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct WeekDetailView: View {
-    @Environment(MockDataService.self) private var dataService
+    @Environment(ActiveDataService.self) private var dataService
     let week: WeeklyGoal
 
     @State private var ringProgress: CGFloat = 0
@@ -127,12 +127,8 @@ struct WeekDetailView: View {
 
     @ViewBuilder
     private func dayThumbnail(workouts: [Workout], name: String, allEntries: [PhotoEntry]) -> some View {
-        if let workout = workouts.first,
-           let photoData = workout.photoData,
-           let uiImage = UIImage(data: photoData) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFill()
+        if let workout = workouts.first, workout.hasPhoto {
+            WorkoutPhotoView(workout: workout)
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .onTapGesture {
@@ -183,7 +179,7 @@ struct WeekDetailView: View {
 
     private func weekPhotoEntries() -> [PhotoEntry] {
         weekWorkouts.compactMap { workout in
-            guard workout.photoData != nil else { return nil }
+            guard workout.hasPhoto else { return nil }
             let name = workout.userId == dataService.currentUser.id
                 ? dataService.currentUser.displayName
                 : dataService.partner.displayName

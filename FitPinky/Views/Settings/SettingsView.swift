@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(MockDataService.self) private var dataService
+    @Environment(ActiveDataService.self) private var dataService
     @State private var showLeaveConfirmation = false
 
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }

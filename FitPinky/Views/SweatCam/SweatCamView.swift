@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SweatCamView: View {
-    @Environment(MockDataService.self) private var dataService
+    @Environment(ActiveDataService.self) private var dataService
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel = SweatCamViewModel()

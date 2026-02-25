@@ -36,6 +36,5 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showSweatCam) {
             SweatCamView()
         }
-        .preferredColorScheme(.dark)
     }
 }

@@ -2,14 +2,14 @@ import SwiftUI
 
 struct PhotoEntry: Identifiable {
     let id: UUID
-    let image: UIImage
+    let workout: Workout
     let memberName: String
     let date: Date
     let caption: String?
 
     init(workout: Workout, memberName: String) {
         self.id = workout.id
-        self.image = UIImage(data: workout.photoData ?? Data()) ?? UIImage()
+        self.workout = workout
         self.memberName = memberName
         self.date = workout.loggedAt
         self.caption = workout.caption
@@ -78,9 +78,7 @@ struct PhotoFullScreenView: View {
         VStack(spacing: 16) {
             Spacer()
 
-            Image(uiImage: entry.image)
-                .resizable()
-                .scaledToFit()
+            WorkoutPhotoView(workout: entry.workout, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 16)
 

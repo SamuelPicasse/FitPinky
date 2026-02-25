@@ -1,6 +1,7 @@
 import Foundation
 
 protocol DataServiceProtocol {
+    func setup() async
     func getCurrentUser() -> UserProfile
     func getPartner() -> UserProfile
     func getPair() -> Pair
@@ -17,4 +18,11 @@ protocol DataServiceProtocol {
     func latestWorkout(for userId: UUID) -> Workout?
     func hasLoggedToday() -> Bool
     func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int
+    func loadPhoto(for workout: Workout) async -> Data?
 }
+
+#if targetEnvironment(simulator)
+typealias ActiveDataService = MockDataService
+#else
+typealias ActiveDataService = CloudKitService
+#endif

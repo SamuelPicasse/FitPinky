@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @Environment(MockDataService.self) private var dataService
+    @Environment(ActiveDataService.self) private var dataService
     @State private var selectedPhotoEntries: [PhotoEntry] = []
     @State private var selectedPhotoIndex: Int = 0
     @State private var showPhotoViewer = false
@@ -117,9 +117,7 @@ struct HistoryView: View {
                     HStack(spacing: 8) {
                         let entries = photoEntries(for: weekWorkouts)
                         ForEach(Array(entries.prefix(4).enumerated()), id: \.element.id) { index, entry in
-                            Image(uiImage: entry.image)
-                                .resizable()
-                                .scaledToFill()
+                            WorkoutPhotoView(workout: entry.workout)
                                 .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .onTapGesture {
@@ -159,7 +157,7 @@ struct HistoryView: View {
 
     private func photoEntries(for workouts: [Workout]) -> [PhotoEntry] {
         workouts.compactMap { workout in
-            guard workout.photoData != nil else { return nil }
+            guard workout.hasPhoto else { return nil }
             let name = workout.userId == dataService.currentUser.id
                 ? dataService.currentUser.displayName
                 : dataService.partner.displayName

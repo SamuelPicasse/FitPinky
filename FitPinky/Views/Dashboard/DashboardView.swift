@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @Environment(MockDataService.self) private var dataService
+    @Environment(ActiveDataService.self) private var dataService
     @Binding var showSweatCam: Bool
     @State private var selectedPhotoEntries: [PhotoEntry] = []
     @State private var selectedPhotoIndex: Int = 0
@@ -127,10 +127,8 @@ struct DashboardView: View {
 
     private func fitCamCard(name: String, workout: Workout?) -> some View {
         VStack(spacing: 8) {
-            if let workout, let photoData = workout.photoData, let uiImage = UIImage(data: photoData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
+            if let workout, workout.hasPhoto {
+                WorkoutPhotoView(workout: workout)
                     .frame(height: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
@@ -139,7 +137,7 @@ struct DashboardView: View {
                         let allWorkouts = dataService.getWorkouts(for: currentWeek)
                             .sorted { $0.loggedAt < $1.loggedAt }
                         let entries: [PhotoEntry] = allWorkouts.compactMap { w in
-                            guard w.photoData != nil else { return nil }
+                            guard w.hasPhoto else { return nil }
                             let memberName = w.userId == dataService.currentUser.id
                                 ? dataService.currentUser.displayName
                                 : dataService.partner.displayName

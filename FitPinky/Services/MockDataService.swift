@@ -10,6 +10,10 @@ final class MockDataService: DataServiceProtocol {
     var weeklyGoals: [WeeklyGoal]
     var workouts: [Workout]
     var nudges: [Nudge]
+    var hasGroup: Bool = true
+    var isLoading: Bool = false
+    var needsAuthentication: Bool = false
+    var onboardingDebugLog: [String] = []
 
     init() {
         let pairId = UUID()
@@ -162,6 +166,8 @@ final class MockDataService: DataServiceProtocol {
 
     // MARK: - DataServiceProtocol
 
+    func setup() async {}
+
     func getCurrentUser() -> UserProfile { currentUser }
     func getPartner() -> UserProfile { partner }
     func getPair() -> Pair { pair }
@@ -261,6 +267,10 @@ final class MockDataService: DataServiceProtocol {
         return workouts.contains {
             $0.userId == currentUser.id && $0.workoutDate.calendarDate == today
         }
+    }
+
+    func loadPhoto(for workout: Workout) async -> Data? {
+        workout.photoData
     }
 
     /// Count unique workout days for a user in a given week
