@@ -19,6 +19,7 @@ protocol DataServiceProtocol {
     func hasLoggedToday() -> Bool
     func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int
     func loadPhoto(for workout: Workout) async -> Data?
+    func ensureCurrentWeekGoal() async
 }
 
 #if targetEnvironment(simulator)

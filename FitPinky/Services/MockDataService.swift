@@ -189,7 +189,7 @@ final class MockDataService: DataServiceProtocol {
             photoData: photoData,
             caption: caption,
             loggedAt: .now,
-            workoutDate: .now
+            workoutDate: effectiveWorkoutDate()
         )
         workouts.append(workout)
     }
@@ -247,7 +247,11 @@ final class MockDataService: DataServiceProtocol {
         currentUser.weeklyGoal = days
         // Sync to the active WeeklyGoal
         guard let index = weeklyGoals.firstIndex(where: { $0.result == nil }) else { return }
-        weeklyGoals[index].goalUserA = days
+        if currentUser.id == pair.userAId {
+            weeklyGoals[index].goalUserA = days
+        } else {
+            weeklyGoals[index].goalUserB = days
+        }
     }
 
     func updateWeekStartDay(_ day: Int) async throws {
@@ -263,7 +267,7 @@ final class MockDataService: DataServiceProtocol {
     }
 
     func hasLoggedToday() -> Bool {
-        let today = Date.now.calendarDate
+        let today = effectiveWorkoutDate()
         return workouts.contains {
             $0.userId == currentUser.id && $0.workoutDate.calendarDate == today
         }
@@ -273,6 +277,8 @@ final class MockDataService: DataServiceProtocol {
         workout.photoData
     }
 
+    func ensureCurrentWeekGoal() async {}
+
     /// Count unique workout days for a user in a given week
     func workoutDays(for userId: UUID, in weeklyGoal: WeeklyGoal) -> Int {
         let weekWorkouts = workouts.filter {
@@ -280,6 +286,15 @@ final class MockDataService: DataServiceProtocol {
         }
         let uniqueDays = Set(weekWorkouts.map { $0.workoutDate.calendarDate })
         return uniqueDays.count
+    }
+
+    /// Workouts logged between midnight and 3AM count for the previous day.
+    private func effectiveWorkoutDate(for date: Date = .now) -> Date {
+        let hour = Calendar.current.component(.hour, from: date)
+        if hour < 3 {
+            return Calendar.current.date(byAdding: .day, value: -1, to: date)!.calendarDate
+        }
+        return date.calendarDate
     }
 
     private static func makeSamplePhoto(color: UIColor, size: CGSize = CGSize(width: 200, height: 200)) -> Data? {

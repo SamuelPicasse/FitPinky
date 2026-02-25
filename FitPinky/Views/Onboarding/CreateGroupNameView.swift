@@ -3,6 +3,7 @@ import SwiftUI
 struct CreateGroupNameView: View {
     @State private var displayName: String = ""
     @State private var showNextScreen = false
+    @FocusState private var nameFocused: Bool
 
     private var trimmedName: String {
         displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19,6 +20,7 @@ struct CreateGroupNameView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 TextField("Name", text: $displayName)
+                    .focused($nameFocused)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
                     .padding(14)
@@ -45,6 +47,7 @@ struct CreateGroupNameView: View {
         }
         .navigationTitle("Create Group")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { nameFocused = true }
         .navigationDestination(isPresented: $showNextScreen) {
             CreateGroupGoalView(displayName: trimmedName)
         }

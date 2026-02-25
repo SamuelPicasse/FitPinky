@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct FitPinkyApp: App {
     @State private var dataService = ActiveDataService()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,11 @@ struct FitPinkyApp: App {
             }
                 .environment(dataService)
                 .task { await dataService.setup() }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        Task { await dataService.ensureCurrentWeekGoal() }
+                    }
+                }
                 .preferredColorScheme(.dark)
         }
     }

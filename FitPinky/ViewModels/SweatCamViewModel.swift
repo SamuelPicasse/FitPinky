@@ -1,5 +1,7 @@
 import UIKit
 import Observation
+import ImageIO
+import UniformTypeIdentifiers
 
 @Observable
 final class SweatCamViewModel {
@@ -50,7 +52,8 @@ final class SweatCamViewModel {
     /// Returns true if the workout was saved successfully.
     func confirmPhoto(dataService: any DataServiceProtocol) async -> Bool {
         guard let watermarkedImage,
-              let photoData = watermarkedImage.jpegData(compressionQuality: 0.7) else { return false }
+              let photoData = compressToHEIC(watermarkedImage, targetSizeKB: 500)
+                ?? watermarkedImage.jpegData(compressionQuality: 0.7) else { return false }
 
         isSubmitting = true
         defer { isSubmitting = false }
@@ -66,6 +69,44 @@ final class SweatCamViewModel {
             self.error = error.localizedDescription
             return false
         }
+    }
+
+    // MARK: - Watermark
+
+    // MARK: - HEIC Compression
+
+    private func compressToHEIC(_ image: UIImage, targetSizeKB: Int) -> Data? {
+        var lo: CGFloat = 0.0
+        var hi: CGFloat = 1.0
+        var best: Data?
+
+        for _ in 0..<8 {
+            let mid = (lo + hi) / 2.0
+            guard let data = heicData(for: image, quality: mid) else { return nil }
+            let sizeKB = data.count / 1024
+            best = data
+            if sizeKB > targetSizeKB {
+                hi = mid
+            } else {
+                lo = mid
+            }
+        }
+        return best
+    }
+
+    private func heicData(for image: UIImage, quality: CGFloat) -> Data? {
+        guard let cgImage = image.cgImage else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data as CFMutableData,
+            UTType.heic.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 
     // MARK: - Watermark

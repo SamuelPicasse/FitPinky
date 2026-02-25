@@ -11,6 +11,9 @@ struct DashboardView: View {
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }
     private var userDays: Int { dataService.workoutDays(for: dataService.currentUser.id, in: currentWeek) }
     private var partnerDays: Int { dataService.workoutDays(for: dataService.partner.id, in: currentWeek) }
+    private var isCurrentUserA: Bool { dataService.currentUser.id == dataService.pair.userAId }
+    private var myGoal: Int { isCurrentUserA ? currentWeek.goalUserA : currentWeek.goalUserB }
+    private var partnerGoal: Int { isCurrentUserA ? currentWeek.goalUserB : currentWeek.goalUserA }
 
     var body: some View {
         ZStack {
@@ -81,13 +84,13 @@ struct DashboardView: View {
                 ProgressRingView(
                     name: dataService.currentUser.displayName,
                     current: userDays,
-                    goal: currentWeek.goalUserA,
+                    goal: myGoal,
                     ringProgress: ringProgress
                 )
                 ProgressRingView(
                     name: dataService.partner.displayName,
                     current: partnerDays,
-                    goal: currentWeek.goalUserB,
+                    goal: partnerGoal,
                     ringProgress: ringProgress
                 )
             }
@@ -213,8 +216,8 @@ struct DashboardView: View {
     }
 
     private var stakesSubtitle: String {
-        let userRemaining = max(0, currentWeek.goalUserA - userDays)
-        let partnerRemaining = max(0, currentWeek.goalUserB - partnerDays)
+        let userRemaining = max(0, myGoal - userDays)
+        let partnerRemaining = max(0, partnerGoal - partnerDays)
 
         if userRemaining == 0 && partnerRemaining == 0 {
             return "You're both on track \u{1F4AA}"

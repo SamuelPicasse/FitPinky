@@ -82,8 +82,11 @@ struct HistoryView: View {
             .sorted { $0.loggedAt < $1.loggedAt }
         let userADays = dataService.workoutDays(for: dataService.currentUser.id, in: week)
         let userBDays = dataService.workoutDays(for: dataService.partner.id, in: week)
-        let userAHit = userADays >= week.goalUserA
-        let userBHit = userBDays >= week.goalUserB
+        let isCurrentUserA = dataService.currentUser.id == dataService.pair.userAId
+        let myGoal = isCurrentUserA ? week.goalUserA : week.goalUserB
+        let partnerGoal = isCurrentUserA ? week.goalUserB : week.goalUserA
+        let userAHit = userADays >= myGoal
+        let userBHit = userBDays >= partnerGoal
 
         return VStack(alignment: .leading, spacing: 10) {
             // Week date range
@@ -95,11 +98,11 @@ struct HistoryView: View {
             HStack(spacing: 16) {
                 resultBadge(
                     name: dataService.currentUser.displayName,
-                    days: userADays, goal: week.goalUserA, hit: userAHit
+                    days: userADays, goal: myGoal, hit: userAHit
                 )
                 resultBadge(
                     name: dataService.partner.displayName,
-                    days: userBDays, goal: week.goalUserB, hit: userBHit
+                    days: userBDays, goal: partnerGoal, hit: userBHit
                 )
                 Spacer()
             }
@@ -166,13 +169,16 @@ struct HistoryView: View {
     }
 
     private func wagerOutcome(result: WeekResult, wagerText: String) -> String {
+        let isCurrentUserA = dataService.currentUser.id == dataService.pair.userAId
         switch result {
         case .bothHit:
             return "Both hit! \u{1F389}"
         case .aOwes:
-            return "\(dataService.currentUser.displayName) owes: \(wagerText)"
+            let owerName = isCurrentUserA ? dataService.currentUser.displayName : dataService.partner.displayName
+            return "\(owerName) owes: \(wagerText)"
         case .bOwes:
-            return "\(dataService.partner.displayName) owes: \(wagerText)"
+            let owerName = isCurrentUserA ? dataService.partner.displayName : dataService.currentUser.displayName
+            return "\(owerName) owes: \(wagerText)"
         case .bothMissed:
             return "Both missed \u{1F605}"
         }

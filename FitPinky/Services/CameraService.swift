@@ -102,6 +102,10 @@ final class CameraService: NSObject {
     func capturePhoto() async throws -> UIImage {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self] in
+                guard photoContinuation == nil else {
+                    continuation.resume(throwing: CameraError.captureFailure)
+                    return
+                }
                 photoContinuation = continuation
                 let settings = AVCapturePhotoSettings()
                 photoOutput.capturePhoto(with: settings, delegate: self)

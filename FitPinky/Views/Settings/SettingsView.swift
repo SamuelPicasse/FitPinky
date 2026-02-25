@@ -3,6 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(ActiveDataService.self) private var dataService
     @State private var showLeaveConfirmation = false
+    @State private var displayNameField: String = ""
+    @FocusState private var displayNameFocused: Bool
+    @State private var wagerDebounceTask: Task<Void, Never>?
 
     private var currentWeek: WeeklyGoal { dataService.getCurrentWeek() }
 
@@ -22,6 +25,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { displayNameField = dataService.currentUser.displayName }
         }
     }
 
@@ -33,8 +37,14 @@ struct SettingsView: View {
                 Image(systemName: "person.fill")
                     .foregroundStyle(Color.brand)
                     .frame(width: 24)
-                TextField("Display name", text: Bindable(dataService).currentUser.displayName)
+                TextField("Display name", text: $displayNameField)
+                    .focused($displayNameFocused)
                     .foregroundStyle(.white)
+                    .onChange(of: displayNameFocused) { _, focused in
+                        if !focused {
+                            Task { try? await dataService.updateDisplayName(displayNameField) }
+                        }
+                    }
             }
             .listRowBackground(Color.cardBackground)
         } header: {
@@ -131,7 +141,15 @@ struct SettingsView: View {
             get: { currentWeek.wagerText },
             set: { newValue in
                 let trimmed = String(newValue.prefix(200))
-                Task { try? await dataService.updateWager(text: trimmed) }
+                if let index = dataService.weeklyGoals.firstIndex(where: { $0.result == nil }) {
+                    dataService.weeklyGoals[index].wagerText = trimmed
+                }
+                wagerDebounceTask?.cancel()
+                wagerDebounceTask = Task {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    try? await dataService.updateWager(text: trimmed)
+                }
             }
         )
     }

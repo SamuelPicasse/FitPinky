@@ -33,6 +33,8 @@ final class CloudKitService: DataServiceProtocol {
     private var memberCount: Int = 0
     private var photoCache: [UUID: Data] = [:]
 
+    private var isEnsuringWeekGoal = false
+
     private enum GroupZoneLocation {
         case privateDB
         case sharedDB
@@ -126,6 +128,7 @@ final class CloudKitService: DataServiceProtocol {
             hasGroup = memberCount >= 2
             if hasGroup {
                 UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
+                await ensureCurrentWeekGoal()
             }
             addDebug("setup() completed: members=\(memberCount), hasGroup=\(hasGroup), zone=\(groupZoneID?.zoneName ?? "nil")")
         } catch {
@@ -191,7 +194,7 @@ final class CloudKitService: DataServiceProtocol {
         record["workoutDate"] = workoutDate as CKRecordValue
         record["workoutId"] = workout.id.uuidString as CKRecordValue
 
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".heic")
         try photoData.write(to: tempURL)
         record["photo"] = CKAsset(fileURL: tempURL)
 
@@ -199,6 +202,7 @@ final class CloudKitService: DataServiceProtocol {
             try await database.save(record)
             try? FileManager.default.removeItem(at: tempURL)
         } catch {
+            workouts.removeAll { $0.id == workout.id }
             try? FileManager.default.removeItem(at: tempURL)
             handleError(error)
             throw mapCKError(error)
@@ -374,6 +378,127 @@ final class CloudKitService: DataServiceProtocol {
         return nil
     }
 
+    // MARK: - Weekly Goal Auto-Creation
+
+    func ensureCurrentWeekGoal() async {
+        guard !isEnsuringWeekGoal, hasGroup, let zoneID = groupZoneID else { return }
+        isEnsuringWeekGoal = true
+        defer { isEnsuringWeekGoal = false }
+
+        let currentWeekStart = Date.now.startOfWeek(weekStartDay: pair.weekStartDay)
+
+        await evaluatePreviousWeekIfNeeded(currentWeekStart: currentWeekStart)
+
+        let currentCalendarDate = currentWeekStart.calendarDate
+        if weeklyGoals.contains(where: { $0.weekStart.calendarDate == currentCalendarDate }) {
+            return
+        }
+
+        let goalUserA: Int
+        let goalUserB: Int
+        if currentUser.id == pair.userAId {
+            goalUserA = currentUser.weeklyGoal
+            goalUserB = partner.weeklyGoal
+        } else {
+            goalUserA = partner.weeklyGoal
+            goalUserB = currentUser.weeklyGoal
+        }
+
+        let previousWager = weeklyGoals
+            .sorted { $0.weekStart > $1.weekStart }
+            .first?.wagerText ?? ""
+
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let iso8601 = formatter.string(from: currentWeekStart)
+        let recordName = "\(pair.id.uuidString)_\(iso8601)"
+
+        let newGoal = WeeklyGoal(
+            id: UUID(),
+            pairId: pair.id,
+            weekStart: currentWeekStart,
+            goalUserA: goalUserA,
+            goalUserB: goalUserB,
+            wagerText: previousWager
+        )
+
+        weeklyGoals.append(newGoal)
+
+        let database = activeGroupDatabase
+        let record = CKRecord(
+            recordType: "WeeklyGoal",
+            recordID: CKRecord.ID(recordName: recordName, zoneID: zoneID)
+        )
+        record["weeklyGoalId"] = newGoal.id.uuidString as CKRecordValue
+        record["groupRef"] = CKRecord.Reference(
+            recordID: CKRecord.ID(recordName: pair.id.uuidString, zoneID: zoneID),
+            action: .none
+        )
+        record["weekStart"] = currentWeekStart as CKRecordValue
+        record["goalUserA"] = goalUserA as CKRecordValue
+        record["goalUserB"] = goalUserB as CKRecordValue
+        record["wagerText"] = previousWager as CKRecordValue
+
+        do {
+            try await database.save(record)
+            addDebug("ensureCurrentWeekGoal() created goal for \(iso8601)")
+        } catch let ckError as CKError where ckError.code == .serverRecordChanged {
+            // Another device already created it — fetch instead
+            weeklyGoals.removeAll { $0.id == newGoal.id }
+            do {
+                try await fetchWeeklyGoalRecords(zoneID: zoneID, database: database)
+            } catch {
+                addDebug("ensureCurrentWeekGoal() re-fetch failed: \(debugDescription(for: error))")
+            }
+        } catch {
+            weeklyGoals.removeAll { $0.id == newGoal.id }
+            addDebug("ensureCurrentWeekGoal() failed: \(debugDescription(for: error))")
+        }
+    }
+
+    private func evaluatePreviousWeekIfNeeded(currentWeekStart: Date) async {
+        let unevaluated = weeklyGoals.enumerated().filter { (_, goal) in
+            goal.result == nil && goal.weekStart.calendarDate < currentWeekStart.calendarDate
+        }
+
+        guard !unevaluated.isEmpty, let zoneID = groupZoneID else { return }
+
+        for (index, goal) in unevaluated {
+            let daysA = workoutDays(for: pair.userAId, in: goal)
+            let daysB = workoutDays(for: pair.userBId, in: goal)
+            let hitA = daysA >= goal.goalUserA
+            let hitB = daysB >= goal.goalUserB
+
+            let result: WeekResult
+            switch (hitA, hitB) {
+            case (true, true): result = .bothHit
+            case (false, true): result = .aOwes
+            case (true, false): result = .bOwes
+            case (false, false): result = .bothMissed
+            }
+
+            weeklyGoals[index].result = result
+            addDebug("evaluatePreviousWeek() \(goal.weekStart.calendarDate): A=\(daysA)/\(goal.goalUserA) B=\(daysB)/\(goal.goalUserB) → \(result.rawValue)")
+
+            let database = activeGroupDatabase
+            let recordName = goal.id.uuidString
+            Task {
+                do {
+                    let record = try await database.record(for: CKRecord.ID(recordName: recordName, zoneID: zoneID))
+                    record["result"] = result.rawValue as CKRecordValue
+                    try await database.save(record)
+                } catch let ckError as CKError where ckError.code == .serverRecordChanged {
+                    if let serverRecord = ckError.serverRecord {
+                        serverRecord["result"] = result.rawValue as CKRecordValue
+                        try? await database.save(serverRecord)
+                    }
+                } catch {
+                    self.addDebug("evaluatePreviousWeek() save failed for \(recordName): \(self.debugDescription(for: error))")
+                }
+            }
+        }
+    }
+
     // MARK: - Onboarding Flow
 
     /// Create group: zone + Group record + Member record + CKShare + invite code
@@ -440,6 +565,7 @@ final class CloudKitService: DataServiceProtocol {
                 pairID: groupID,
                 ownerGoal: weeklyGoal,
                 partnerGoal: weeklyGoal,
+                weekStartDay: 1,
                 zoneID: zoneID,
                 database: container.privateCloudDatabase
             )
@@ -790,10 +916,11 @@ final class CloudKitService: DataServiceProtocol {
         pairID: UUID,
         ownerGoal: Int,
         partnerGoal: Int,
+        weekStartDay: Int,
         zoneID: CKRecordZone.ID,
         database: CKDatabase
     ) async throws {
-        let weekStart = Date.now.startOfWeek(weekStartDay: 1)
+        let weekStart = Date.now.startOfWeek(weekStartDay: weekStartDay)
         let weeklyGoalID = UUID()
 
         let goalRecord = CKRecord(
@@ -947,7 +1074,7 @@ final class CloudKitService: DataServiceProtocol {
     private func fetchShareMetadata(from url: URL) async throws -> CKShare.Metadata {
         addDebug("fetchShareMetadata() requesting metadata from share URL")
         let operation = CKFetchShareMetadataOperation(shareURLs: [url])
-        operation.shouldFetchRootRecord = false
+        operation.shouldFetchRootRecord = true
         operation.qualityOfService = .userInitiated
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -1029,9 +1156,11 @@ final class CloudKitService: DataServiceProtocol {
 
     // MARK: - CKRecord ↔ Model Mapping
 
+    private static let partnerPlaceholderID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
     private func pairFromRecord(_ record: CKRecord) -> Pair {
         let userA = UUID(uuidString: record["userAId"] as? String ?? "") ?? UUID()
-        let userB = UUID(uuidString: record["userBId"] as? String ?? "") ?? userA
+        let userB = UUID(uuidString: record["userBId"] as? String ?? "") ?? Self.partnerPlaceholderID
 
         return Pair(
             id: UUID(uuidString: record.recordID.recordName) ?? UUID(),
@@ -1089,12 +1218,8 @@ final class CloudKitService: DataServiceProtocol {
         let timestamp = Self.debugTimestampFormatter.string(from: Date())
         let line = "[\(timestamp)] \(message)"
         logger.debug("\(line, privacy: .public)")
-        if Thread.isMainThread {
-            appendDebugLine(line)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.appendDebugLine(line)
-            }
+        Task { @MainActor in
+            self.appendDebugLine(line)
         }
     }
 

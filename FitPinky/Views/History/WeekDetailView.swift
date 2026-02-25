@@ -18,6 +18,9 @@ struct WeekDetailView: View {
     private var userBDays: Int {
         dataService.workoutDays(for: dataService.partner.id, in: week)
     }
+    private var isCurrentUserA: Bool { dataService.currentUser.id == dataService.pair.userAId }
+    private var myGoal: Int { isCurrentUserA ? week.goalUserA : week.goalUserB }
+    private var partnerGoal: Int { isCurrentUserA ? week.goalUserB : week.goalUserA }
 
     var body: some View {
         ZStack {
@@ -52,13 +55,13 @@ struct WeekDetailView: View {
                 ProgressRingView(
                     name: dataService.currentUser.displayName,
                     current: userADays,
-                    goal: week.goalUserA,
+                    goal: myGoal,
                     ringProgress: ringProgress
                 )
                 ProgressRingView(
                     name: dataService.partner.displayName,
                     current: userBDays,
-                    goal: week.goalUserB,
+                    goal: partnerGoal,
                     ringProgress: ringProgress
                 )
             }
@@ -189,10 +192,14 @@ struct WeekDetailView: View {
 
     private func resultTitle(_ result: WeekResult) -> String {
         switch result {
-        case .bothHit: "Both hit! 🎉"
-        case .aOwes: "\(dataService.currentUser.displayName) owes"
-        case .bOwes: "\(dataService.partner.displayName) owes"
-        case .bothMissed: "Both missed 😅"
+        case .bothHit: return "Both hit! 🎉"
+        case .aOwes:
+            let owerName = isCurrentUserA ? dataService.currentUser.displayName : dataService.partner.displayName
+            return "\(owerName) owes"
+        case .bOwes:
+            let owerName = isCurrentUserA ? dataService.partner.displayName : dataService.currentUser.displayName
+            return "\(owerName) owes"
+        case .bothMissed: return "Both missed 😅"
         }
     }
 
