@@ -35,4 +35,13 @@ extension Date {
         let daysSinceStart = calendar.dateComponents([.day], from: weekStart, to: calendarDate).day ?? 0
         return max(1, 7 - daysSinceStart)
     }
+
+    /// Format a week range: "Feb 17 - Feb 23"
+    func weekDateRange(weekStartDay: Int = 1) -> String {
+        let start = startOfWeek(weekStartDay: weekStartDay)
+        let end = Calendar.current.date(byAdding: .day, value: 6, to: start)!
+        let startStr = start.formatted(.dateTime.month(.abbreviated).day())
+        let endStr = end.formatted(.dateTime.month(.abbreviated).day())
+        return "\(startStr) - \(endStr)"
+    }
 }
